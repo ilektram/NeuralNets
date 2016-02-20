@@ -1,61 +1,71 @@
-import string
+import logging
 
 import numpy as np
 import pandas as pd
+from sklearn.cross_validation import train_test_split
 from keras.models import Sequential
 from keras.layers.core import Dense, Activation
-from keras.optimizers import SGD
+from keras.optimizers import SGD, Adadelta
+
+logging.basicConfig(level=logging.DEBUG)
 
 
 # Load training data
 def load_data(input_data):
+    """
+    Loads data as ndarray
+    input_data: a single csv file with an ID column
+    """
     df_train = pd.read_csv(input_data, index_col="ID")
+
+    for col in df_train.columns:
+        if df_train[col].dtype == 'object':
+            df_train[col] = df_train[col].astype('category').cat.codes
+
     df_train = df_train.dropna(axis=0, how='any', thresh=None, subset=None)
-    # df_train = df_train.fillna(df_train.mean())
-    df_train.drop(['v125', 'v56', 'v22'], inplace=True, axis=1, errors='ignore')
-
-    letters = enumerate(string.ascii_uppercase, start=1)
-
-    for index, letter in letters:
-        df_train.replace(letter, index, inplace=True)
 
     train = df_train.as_matrix()
-
     return train
 
-train_ndarray = load_data("train.csv")
+
+def train_test(input_data):
+    """
+    Splits data to training & testing sets
+    Splits columns to input & output for training & testing set respectively
+    input_data: a single csv file with an ID column
+    """
+    train_ndarray = load_data(input_data)
+    split = np.split(train_ndarray, [0, 1], axis=1)
+    train_inp = split[2]
+    train_out = split[1]
+    x_train, x_test, y_train, y_test = train_test_split(train_inp,
+                                                        train_out,
+                                                        test_size=0.33,
+                                                        random_state=42)
+    return (x_train, x_test, y_train, y_test)
 
 
-split = np.split(train_ndarray, [0, 1], axis=1)
-train_inp = split[1]
-train_out = split[2]
+x_train, x_test, y_train, y_test = train_test("train.csv")
 
-print(train_inp.shape, train_out.shape, train_ndarray.shape)
+logging.debug("SHAPES: IN Train [{}], Test [{}]".format(x_train.shape, x_test.shape))
+logging.debug("SHAPES: OUT Train [{}], Test [{}]".format(y_train.shape, y_test.shape))
 
-
-# Convert data to correct dimensions
-#pole_expected = pole_expected.reshape(len(pole_inp), 1)
-
-# Split data to training & testing sets
-#X_train, X_test, y_train, y_test = train_test_split(pole_inp,
-#                                                    pole_expected,
-#                                                    test_size=0.33,
-#                                                    random_state=42)
 
 # Create NN for 2-layer unidimensional regression
-#model = Sequential()
-#model.add(Dense(2, input_shape=(pole_inp.shape[1],)))
-#model.add(Activation('linear'))
-#model.add(Dense(1))
-#model.add(Activation('linear'))
+model = Sequential()
+model.add(Dense(60, input_shape=(train_inp.shape[1],)))
+model.add(Activation('sigmoid'))
+model.add(Dense(output_dim=1))
+model.add(Activation('softmax'))
 
 #learning_rate = .1
 #sgd = SGD(lr=learning_rate, decay=1e-6, momentum=0.9, nesterov=True)
+adadelta = Adadelta(lr=1.0, rho=0.95, epsilon=1e-06)
 
-#model.compile(loss='mean_squared_error', optimizer=sgd)
+model.compile(loss='binary_crossentropy', optimizer=adadelta)
 
-#epochs = 10
-#model.fit(X_train, y_train, nb_epoch=epochs, batch_size=200)
+epochs = 10
+model.fit(train_inp, train_out, nb_epoch=epochs)
 # score = model.evaluate(X_test, y_test, batch_size=16)
 
 #predicted = model.predict(X_test)
