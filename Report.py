@@ -6,18 +6,32 @@ from keras.models import Sequential
 from keras.layers.core import Dense, Activation
 from keras.optimizers import SGD
 
-# Load training data as pandas df
-df_train = pd.read_csv("train.csv", index_col="ID")
-df_train = df_train.dropna(axis=0, how='any', thresh=None, subset=None)
-# df_train = df_train.fillna(df_train.mean())
-df_train.drop(['v125', 'v56', 'v22'], inplace=True, axis=1, errors='ignore')
 
-letters = enumerate(string.ascii_uppercase, start=1)
+# Load training data
+def load_data(input_data):
+    df_train = pd.read_csv(input_data, index_col="ID")
+    df_train = df_train.dropna(axis=0, how='any', thresh=None, subset=None)
+    # df_train = df_train.fillna(df_train.mean())
+    df_train.drop(['v125', 'v56', 'v22'], inplace=True, axis=1, errors='ignore')
 
-for index, letter in letters:
-    df_train.replace(letter, index, inplace=True)
+    letters = enumerate(string.ascii_uppercase, start=1)
 
-print(df_train)
+    for index, letter in letters:
+        df_train.replace(letter, index, inplace=True)
+
+    train = df_train.as_matrix()
+
+    return train
+
+train_ndarray = load_data("train.csv")
+
+
+split = np.split(train_ndarray, [0, 1], axis=1)
+train_inp = split[1]
+train_out = split[2]
+
+print(train_inp.shape, train_out.shape, train_ndarray.shape)
+
 
 # Convert data to correct dimensions
 #pole_expected = pole_expected.reshape(len(pole_inp), 1)
