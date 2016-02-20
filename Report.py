@@ -46,55 +46,65 @@ def train_test(input_data):
                                                         train_out,
                                                         test_size=0.33,
                                                         random_state=42)
+    y_train = np_utils.to_categorical(y_train)
+    y_test = np_utils.to_categorical(y_test)
+
     return (x_train, x_test, y_train, y_test)
 
 
 x_train, x_test, y_train, y_test = train_test("train.csv")
-y_train = np_utils.to_categorical(y_train)
-y_test = np_utils.to_categorical(y_test)
+
 
 logging.debug("SHAPES: IN Train [{}], Test [{}]".format(x_train.shape, x_test.shape))
 logging.debug("SHAPES: OUT Train [{}], Test [{}]".format(y_train.shape, y_test.shape))
 
 
 # Create NN for 2-layer unidimensional regression
-model = Sequential()
 
-model.add(Dense(128, input_shape=(x_train.shape[1],)))
-model.add(Activation('relu'))
-model.add(Dropout(0.5))
-
-model.add(Dense(64))
-model.add(Activation('relu'))
-model.add(Dropout(0.5))
-
-model.add(Dense(output_dim=2))
-model.add(Activation('softmax'))
-
-learning_rate = .1
-sgd = SGD(lr=learning_rate, decay=1e-6, momentum=0.9, nesterov=True)
+# learning_rate = .1
+# sgd = SGD(lr=learning_rate, decay=1e-6, momentum=0.9, nesterov=True)
 adadelta = Adadelta(lr=1.0, rho=0.95, epsilon=1e-06)
-
-model.compile(class_mode='binary', loss='binary_crossentropy', optimizer=adadelta)
 
 batch = len(x_train)
 epochs = 100
-early_stopping = EarlyStopping(
-    monitor='val_loss',
-    patience=10,
-    verbose=0,
-    mode='auto'
-)
 
-model.fit(
-    x_train,
-    y_train,
-    nb_epoch=epochs,
-    batch_size=batch,
-    validation_split=0.1,
-    show_accuracy=True,
-    callbacks=[early_stopping]
-)
+
+def nn_model(x_train, y_train, epochs, batch, error_fun):
+
+    model = Sequential()
+
+    model.add(Dense(128, input_shape=(x_train.shape[1],)))
+    model.add(Activation('relu'))
+    model.add(Dropout(0.5))
+
+    model.add(Dense(64))
+    model.add(Activation('relu'))
+    model.add(Dropout(0.5))
+
+    model.add(Dense(output_dim=2))
+    model.add(Activation('softmax'))
+    model.compile(class_mode='binary', loss='binary_crossentropy', optimizer=error_fun)
+
+    early_stopping = EarlyStopping(
+        monitor='val_loss',
+        patience=10,
+        verbose=0,
+        mode='auto'
+    )
+
+    model.fit(
+        x_train,
+        y_train,
+        nb_epoch=epochs,
+        batch_size=batch,
+        validation_split=0.1,
+        show_accuracy=True,
+        callbacks=[early_stopping]
+    )
+
+    return model
+
+model = nn_model(x_train, y_train, epochs, batch, adadelta)
 
 predicted = model.predict(x_test)
 rmse = np.sqrt(((predicted - y_test) ** 2).mean(axis=0))
