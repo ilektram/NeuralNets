@@ -4,8 +4,11 @@ import numpy as np
 import pandas as pd
 from sklearn.cross_validation import train_test_split
 from keras.models import Sequential
-from keras.layers.core import Dense, Activation
+from keras.layers.core import Dense, Activation, Dropout
 from keras.optimizers import SGD, Adadelta
+from keras.callbacks import EarlyStopping
+from keras.utils import np_utils
+
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -47,6 +50,8 @@ def train_test(input_data):
 
 
 x_train, x_test, y_train, y_test = train_test("train.csv")
+y_train = np_utils.to_categorical(y_train)
+y_test = np_utils.to_categorical(y_test)
 
 logging.debug("SHAPES: IN Train [{}], Test [{}]".format(x_train.shape, x_test.shape))
 logging.debug("SHAPES: OUT Train [{}], Test [{}]".format(y_train.shape, y_test.shape))
@@ -54,26 +59,48 @@ logging.debug("SHAPES: OUT Train [{}], Test [{}]".format(y_train.shape, y_test.s
 
 # Create NN for 2-layer unidimensional regression
 model = Sequential()
-model.add(Dense(60, input_shape=(x_train.shape[1],)))
-model.add(Activation('sigmoid'))
-model.add(Dense(output_dim=1))
+
+model.add(Dense(128, input_shape=(x_train.shape[1],)))
+model.add(Activation('relu'))
+model.add(Dropout(0.5))
+
+model.add(Dense(64))
+model.add(Activation('relu'))
+model.add(Dropout(0.5))
+
+model.add(Dense(output_dim=2))
 model.add(Activation('softmax'))
 
-#learning_rate = .1
-#sgd = SGD(lr=learning_rate, decay=1e-6, momentum=0.9, nesterov=True)
+learning_rate = .1
+sgd = SGD(lr=learning_rate, decay=1e-6, momentum=0.9, nesterov=True)
 adadelta = Adadelta(lr=1.0, rho=0.95, epsilon=1e-06)
 
-model.compile(loss='binary_crossentropy', optimizer=adadelta)
+model.compile(class_mode='binary', loss='binary_crossentropy', optimizer=adadelta)
 
-epochs = 10
-model.fit(x_train, y_train, nb_epoch=epochs)
-# score = model.evaluate(X_test, y_test, batch_size=16)
+batch = len(x_train)
+epochs = 100
+early_stopping = EarlyStopping(
+    monitor='val_loss',
+    patience=10,
+    verbose=0,
+    mode='auto'
+)
 
-#predicted = model.predict(X_test)
-#rmse = np.sqrt(((predicted - y_test) ** 2).mean(axis=0))
-#print("This NN's RMSE: {}".format(rmse))
+model.fit(
+    x_train,
+    y_train,
+    nb_epoch=epochs,
+    batch_size=batch,
+    validation_split=0.1,
+    show_accuracy=True,
+    callbacks=[early_stopping]
+)
 
-#score = model.evaluate(X_test, y_test, show_accuracy=True, batch_size=200)
+predicted = model.predict(x_test)
+rmse = np.sqrt(((predicted - y_test) ** 2).mean(axis=0))
+print("This NN's RMSE: {}".format(rmse))
 
-#print('Test score: {}'.format(score[0]))
-#print('Test accuracy: {}'.format(score[1]))
+score = model.evaluate(x_test, y_test, show_accuracy=True, batch_size=batch)
+
+print('Test score: {}'.format(score[0]))
+print('Test accuracy: {}'.format(score[1]))
