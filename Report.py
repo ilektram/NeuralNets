@@ -34,6 +34,7 @@ def train_test(input_data):
     Splits columns to input & output for training & testing set respectively
     input_data: a single csv file with an ID column
     """
+    logging.info("Loading data from '{}'".format(input_data))
     train_ndarray = load_data(input_data)
     split = np.split(train_ndarray, [0, 1], axis=1)
     train_inp = split[2]
@@ -53,7 +54,7 @@ logging.debug("SHAPES: OUT Train [{}], Test [{}]".format(y_train.shape, y_test.s
 
 # Create NN for 2-layer unidimensional regression
 model = Sequential()
-model.add(Dense(60, input_shape=(train_inp.shape[1],)))
+model.add(Dense(60, input_shape=(x_train.shape[1],)))
 model.add(Activation('sigmoid'))
 model.add(Dense(output_dim=1))
 model.add(Activation('softmax'))
@@ -65,7 +66,7 @@ adadelta = Adadelta(lr=1.0, rho=0.95, epsilon=1e-06)
 model.compile(loss='binary_crossentropy', optimizer=adadelta)
 
 epochs = 10
-model.fit(train_inp, train_out, nb_epoch=epochs)
+model.fit(x_train, y_train, nb_epoch=epochs)
 # score = model.evaluate(X_test, y_test, batch_size=16)
 
 #predicted = model.predict(X_test)
