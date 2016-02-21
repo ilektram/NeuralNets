@@ -21,14 +21,39 @@ def load_data(input_data):
     """
     df_train = pd.read_csv(input_data, index_col="ID")
 
-    for col in df_train.columns:
-        if df_train[col].dtype == 'object':
-            df_train[col] = df_train[col].astype('category').cat.codes
+    # Fill categorical categories with NA value and convert them to the right
+    # type
+    for col in df_train.select_dtypes(include=['object']).columns:
+        df_train[col] = df_train[col].fillna(value='NA', axis=0)
+        df_train[col] = df_train[col].astype('category')
 
-    df_train = df_train.dropna(axis=0, how='any', thresh=None, subset=None)
+    # Fill the other columns with 0 as the fill value
+    for col in df_train.select_dtypes(exclude=['category']).columns:
+        df_train[col] = df_train[col].fillna(value=0, axis=0)
 
-    train = df_train.as_matrix()
-    return train
+    old_length = df_train.shape[0]
+    df_train = df_train.dropna(axis=0, how='any')
+    row_diff = old_length - df_train.shape[0]
+    logging.debug(
+        "Dropped {} rows with NAs {:.1%}".format(
+            row_diff,
+            float(row_diff)/old_length
+        )
+    )
+    return df_train
+
+
+def categorical_to_front(input_df):
+    cat_columns = list(input_df.select_dtypes(include=['category']).columns)
+
+    logging.debug("Number of categorical columns: {}".format(len(cat_columns)))
+
+    other_columns = list(input_df.select_dtypes(exclude=['category']).columns)
+
+    new_column_order = cat_columns + other_columns
+    train_df = input_df[new_column_order]
+
+    return train_df
 
 
 def train_test(input_data):
@@ -38,10 +63,25 @@ def train_test(input_data):
     input_data: a single csv file with an ID column
     """
     logging.info("Loading data from '{}'".format(input_data))
-    train_ndarray = load_data(input_data)
-    split = np.split(train_ndarray, [0, 1], axis=1)
-    train_inp = split[2]
-    train_out = split[1]
+    train_df = load_data(input_data)
+
+    # Reorder the columns, categorical go first
+    train_df = categorical_to_front(train_df)
+
+    # Temporary
+    for col in train_df.select_dtypes(include=['category']).columns:
+        train_df[col] = train_df[col].astype('category').cat.codes
+
+    train_inp = train_df.drop('target', axis=1).as_matrix()
+    train_out = train_df['target'].as_matrix()
+
+    logging.debug(
+        "Train 0s/1s: {:.2%} / {:.2%}".format(
+            1.0 - np.average(train_out),
+            np.average(train_out)
+        )
+    )
+
     x_train, x_test, y_train, y_test = train_test_split(train_inp,
                                                         train_out,
                                                         test_size=0.33,
@@ -78,7 +118,7 @@ def nn_model(x_train, y_train, epochs, batch, error_fun):
     model.add(Dropout(0.5))
 
     model.add(Dense(64))
-    model.add(Activation('relu'))
+    model.add(Activation('linear'))
     model.add(Dropout(0.5))
 
     model.add(Dense(output_dim=2))
