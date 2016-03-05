@@ -1,16 +1,21 @@
 import logging
+from pprint import pformat
 
 import numpy as np
 import pandas as pd
 from sklearn.cross_validation import train_test_split
 from keras.models import Sequential
 from keras.layers.core import Dense, Activation, Dropout
-from keras.optimizers import SGD, Adadelta
+from keras.layers.normalization import BatchNormalization
+from keras.optimizers import Adagrad
 from keras.callbacks import EarlyStopping
 from keras.utils import np_utils
 
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(levelname)-8s %(message)s'
+)
 
 
 # Load training data
@@ -29,7 +34,7 @@ def load_data(input_data):
 
     # Fill the other columns with 0 as the fill value
     for col in df_train.select_dtypes(exclude=['category']).columns:
-        df_train[col] = df_train[col].fillna(value=0, axis=0)
+        df_train[col] = df_train[col].fillna(value=-1, axis=0)
 
     old_length = df_train.shape[0]
     df_train = df_train.dropna(axis=0, how='any')
@@ -56,6 +61,44 @@ def categorical_to_front(input_df):
     return train_df
 
 
+def categorical_analysis(input_data):
+    categories = []
+    for col in input_data.columns:
+        if str(input_data[col].dtype) == "category":
+            cat = {
+                "col_lbl": col,
+                "cat_count": input_data[col].cat.categories.shape[0]
+            }
+            categories.append(cat)
+    return categories
+
+
+def convert_category_to_columns(input_data, column_name):
+    if not isinstance(input_data, pd.DataFrame):
+        raise TypeError("Input data must be a Pandas DataFrame")
+    if str(input_data[column_name].dtype) != "category":
+        raise RuntimeError("Can only run this on categorical columns")
+    categories = input_data[column_name].cat.categories
+
+    for cat in categories:
+        new_col_name = "{col}_{cat}".format(col=column_name, cat=cat)
+        input_data[new_col_name] = np.where(
+            input_data[column_name] == cat,
+            1,
+            0
+        )
+
+
+def convert_categories_to_columns(input_data, cat_thres=130):
+    cols_to_remove = []
+    for col in input_data.columns:
+        if str(input_data[col].dtype) == 'category':
+            if input_data[col].cat.categories.shape[0] < cat_thres:
+                convert_category_to_columns(input_data, col)
+                cols_to_remove.append(col)
+    input_data.drop(cols_to_remove, axis=1, inplace=True)
+
+
 def train_test(input_data):
     """
     Splits data to training & testing sets
@@ -67,6 +110,15 @@ def train_test(input_data):
 
     # Reorder the columns, categorical go first
     train_df = categorical_to_front(train_df)
+    logging.debug(
+        "Categories and label counts: {}".format(
+            pformat(categorical_analysis(train_df))
+        )
+    )
+
+    convert_categories_to_columns(train_df)
+
+    logging.debug(train_df.get_dtype_counts())
 
     # Temporary
     for col in train_df.select_dtypes(include=['category']).columns:
@@ -103,9 +155,11 @@ logging.debug("SHAPES: OUT Train [{}], Test [{}]".format(y_train.shape, y_test.s
 
 # learning_rate = .1
 # sgd = SGD(lr=learning_rate, decay=1e-6, momentum=0.9, nesterov=True)
-adadelta = Adadelta(lr=1.0, rho=0.95, epsilon=1e-06)
+adagrad = Adagrad()
 
-batch = len(x_train)
+# batch = len(x_train)
+batch = 1024
+
 epochs = 100
 
 
@@ -115,7 +169,7 @@ def nn_model(x_train, y_train, epochs, batch, error_fun):
 
     model.add(Dense(128, input_shape=(x_train.shape[1],)))
     model.add(Activation('relu'))
-    model.add(Dropout(0.5))
+    model.add(BatchNormalization())
 
     model.add(Dense(64))
     model.add(Activation('linear'))
@@ -144,13 +198,15 @@ def nn_model(x_train, y_train, epochs, batch, error_fun):
 
     return model
 
-model = nn_model(x_train, y_train, epochs, batch, adadelta)
+model = nn_model(x_train, y_train, epochs, batch, adagrad)
 
 predicted = model.predict(x_test)
+logging.info("Predicted 0s/1s: {:.2%} {:.2%}".format(np.average(predicted[:, 0]), np.average(predicted[:, 1])))
+print(predicted, y_test)
 rmse = np.sqrt(((predicted - y_test) ** 2).mean(axis=0))
 print("This NN's RMSE: {}".format(rmse))
 
 score = model.evaluate(x_test, y_test, show_accuracy=True, batch_size=batch)
 
-print('Test score: {}'.format(score[0]))
+print('Test score (log loss): {}'.format(score[0]))
 print('Test accuracy: {}'.format(score[1]))
